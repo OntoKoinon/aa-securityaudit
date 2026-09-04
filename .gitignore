@@ -60,5 +60,9 @@ zkill_*.json
 .windsurf/
 .devin/
 
+# Release script and PyPI token (local only, never commit)
+release.ps1
+.pypi-token
+
 # Local git backup (created during release prep)
 .git.bak/

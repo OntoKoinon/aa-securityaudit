@@ -10,6 +10,7 @@ class SecurityAuditConfig(AppConfig):
     name = "allianceauth_securityaudit"
     label = "securityaudit"
     verbose_name = "Security Audit"
+    default_auto_field = "django.db.models.BigAutoField"
 
     def ready(self):
         installed = set(getattr(settings, "INSTALLED_APPS", []))
