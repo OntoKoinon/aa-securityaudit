@@ -100,9 +100,6 @@ Generate time-limited summary links to share audit findings with FCs, directors,
 ### Real-Time Updates
 Audit detail pages update live — no manual refresh needed. Watch the audit progress through each analysis stage as it happens.
 
-### Built for Dark Mode
-Every UI component is designed for dark and night themes by default. No blinding white panels in the middle of a late-night fleet op.
-
 ## Installation
 
 ### Prerequisites
@@ -147,10 +144,10 @@ Every UI component is designed for dark and night themes by default. No blinding
 
 ### Finalizing the Installation
 
-1. **Assign permissions** to your security team (see [Permissions](#permissions) below).
+1. **Assign permissions** to your leadership or recruitment teams (see [Permissions](#permissions) below).
 2. **Configure policy thresholds** via the Policy Editor page. The defaults are sensible for most alliances, but everything is tunable.
 3. **Build your enemy list** — Add enemy alliances, corporations, and characters via the Enemy List page. Every audit checks against this list automatically.
-4. **Add financial exceptions** for legitimate transfers (corp reimbursements, SRP payouts, etc.) so they don't trigger false positives.
+4. **Add financial exceptions** to exempt specific entities from having the tool report on their financials, useful for protecting the identity of entities who are paying you for contract deployments, or for hiding payments to your own spies.
 
 ## Permissions
 
@@ -254,13 +251,6 @@ See [CHANGELOG.md](CHANGELOG.md) for release history.
 
 Found a bug or have a feature idea? Please open an issue or pull request on
 [GitHub](https://github.com/OntoKoinon/aa-securityaudit).
-
-If you've made a new app for AllianceAuth, please consider sharing it with the
-rest of the community. For any questions on how to share your app, please
-contact the AA devs on their
-[Discord](https://discord.gg/Eve-Alliance-Auth). You can find the current
-community creations
-[here](https://gitlab.com/allianceauth/community-creations).
 
 ## License
 
