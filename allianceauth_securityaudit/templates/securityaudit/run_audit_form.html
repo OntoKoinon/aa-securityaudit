@@ -1,0 +1,235 @@
+{% load securityaudit_extras %}
+<form method="post" action="{% url 'securityaudit:run_audit' %}" id="run-audit-form" class="row g-3">
+    {% csrf_token %}
+    <div class="col-12 d-flex align-items-end gap-2 flex-wrap">
+        <div class="d-flex flex-column" style="min-width: 140px;">
+            <label class="form-label" for="id_target_type">Target Type</label>
+            {{ form.target_type }}
+        </div>
+        <div class="flex-grow-1" id="character-field" style="min-width: 220px;">
+            <label class="form-label" for="id_character_name">Character</label>
+            {{ form.character_name }}
+            {{ form.character_id }}
+            <div id="character-results" class="list-group mt-2"></div>
+            {% if form.character_name.errors %}
+            <div class="text-danger small mt-1">{{ form.character_name.errors|join:", " }}</div>
+            {% endif %}
+        </div>
+        <div class="flex-grow-1" id="corporation-field" style="min-width: 220px; display: none;">
+            <label class="form-label" for="id_corporation_name">Corporation</label>
+            {{ form.corporation_name }}
+            {{ form.corporation_id }}
+            <div id="corporation-results" class="list-group mt-2"></div>
+            {% if form.corporation_name.errors %}
+            <div class="text-danger small mt-1">{{ form.corporation_name.errors|join:", " }}</div>
+            {% endif %}
+        </div>
+        <div class="d-flex flex-column">
+            <label class="form-label mb-0">&nbsp;</label>
+            <button type="submit" class="btn btn-primary">Queue Audit</button>
+        </div>
+    </div>
+
+    <div class="col-12">
+        <div class="d-flex flex-wrap gap-4 align-items-center ps-1">
+            <div class="form-check form-check-inline mb-0">
+                <input class="form-check-input" type="checkbox" id="id_check_standard" checked disabled />
+                <label class="form-check-label" for="id_check_standard">Standard Audit</label>
+                <small class="text-muted d-block">Always included</small>
+            </div>
+            <div class="form-check form-check-inline mb-0">
+                <input class="form-check-input" type="checkbox" name="check_undisclosed_alts" id="id_check_undisclosed_alts" {% if form.check_undisclosed_alts.value != False %}checked{% endif %} />
+                <label class="form-check-label" for="id_check_undisclosed_alts">Undisclosed Alt Check</label>
+            </div>
+            <div class="form-check form-check-inline mb-0">
+                <input class="form-check-input" type="checkbox" name="check_capital_observations" id="id_check_capital_observations" {% if form.check_capital_observations.value != False %}checked{% endif %} />
+                <label class="form-check-label" for="id_check_capital_observations">Capital Observations</label>
+            </div>
+            <div class="form-check form-check-inline mb-0">
+                <input class="form-check-input" type="checkbox" name="check_awox" id="id_check_awox" {% if form.check_awox.value != False %}checked{% endif %} />
+                <label class="form-check-label" for="id_check_awox">Awoxing Check</label>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12">
+        <div class="accordion" id="advancedAuditAccordion">
+            <div class="accordion-item">
+                <h2 class="accordion-header">
+                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#advancedAuditFields" aria-expanded="false" aria-controls="advancedAuditFields">
+                        Advanced overrides
+                    </button>
+                </h2>
+                <div id="advancedAuditFields" class="accordion-collapse collapse" data-bs-parent="#advancedAuditAccordion">
+                    <div class="accordion-body row g-3">
+                        <p class="text-muted small">Optional. Values left at the default use the current audit policy.</p>
+                        {% for name in form.OVERRIDE_FIELDS %}
+                            {% with field=form|get_field:name %}
+                            <div class="col-12 col-lg-6">
+                                <label class="form-label" for="{{ field.id_for_label }}">
+                                    {{ field.label }}
+                                    {% if field.help_text %}
+                                    <sup class="text-info ms-1" data-bs-toggle="tooltip" data-bs-html="true" data-bs-placement="top" title="{{ field.help_text }}">(i)</sup>
+                                    {% endif %}
+                                    <span class="js-range-value text-muted small">
+                                        {% if "isk" in field.name %}{{ field.value|format_isk }}{% else %}{{ field.value }}{% endif %}
+                                    </span>
+                                </label>
+                                {{ field }}
+                                {% if field.errors %}
+                                <div class="text-danger small mt-1">{{ field.errors|join:", " }}</div>
+                                {% endif %}
+                            </div>
+                            {% endwith %}
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</form>
+
+<style>
+    /* Theme-aware Advanced accordion for dark/night mode */
+    #advancedAuditAccordion .accordion-item {
+        background-color: var(--bs-body-bg, transparent);
+        color: var(--bs-body-color, #fff);
+    }
+
+    #advancedAuditAccordion .accordion-button {
+        background-color: var(--bs-body-bg, rgba(0, 0, 0, 0.2));
+        color: var(--bs-body-color, #fff);
+        box-shadow: none;
+    }
+
+    #advancedAuditAccordion .accordion-button:not(.collapsed) {
+        background-color: var(--bs-body-bg, rgba(0, 0, 0, 0.2));
+        color: var(--bs-body-color, #fff);
+    }
+
+    #advancedAuditAccordion .accordion-button::after {
+        filter: var(--bs-accordion-btn-active-icon-filter, invert(1) grayscale(100%) brightness(200%));
+    }
+
+    #run-audit-form .form-select,
+    #run-audit-form .form-control {
+        min-height: 42px;
+    }
+    #run-audit-form .btn-primary[type="submit"] {
+        min-height: 42px;
+    }
+</style>
+
+<script>
+    (function () {
+        const targetType = document.getElementById("id_target_type");
+        const characterField = document.getElementById("character-field");
+        const corporationField = document.getElementById("corporation-field");
+        const characterInput = document.getElementById("id_character_name");
+        const characterIdInput = document.getElementById("id_character_id");
+        const characterResults = document.getElementById("character-results");
+        const corporationInput = document.getElementById("id_corporation_name");
+        const corporationIdInput = document.getElementById("id_corporation_id");
+        const corporationResults = document.getElementById("corporation-results");
+
+        function syncTargetFields() {
+            const isIndividual = targetType.value === "individual";
+            characterField.style.display = isIndividual ? "block" : "none";
+            corporationField.style.display = isIndividual ? "none" : "block";
+        }
+
+        function renderResults(container, rows, type) {
+            if (!rows.length) {
+                container.innerHTML = "";
+                return;
+            }
+            container.innerHTML = rows.map((row) => {
+                const id = type === "character" ? (row.character_id || "") : (row.corporation_id || "");
+                const name = type === "character" ? row.character_name : row.name;
+                const encodedName = encodeURIComponent(name || "");
+                const subtitle = row.subtitle || row.ticker || "";
+                const image = row.portrait_url || row.logo_url || "";
+                return `
+                    <button type="button" class="list-group-item list-group-item-action" data-kind="${type}" data-id="${id}" data-name="${encodedName}">
+                        <div class="d-flex align-items-center gap-2">
+                            ${image ? `<img src="${image}" alt="" width="32" height="32" class="rounded" />` : ""}
+                            <div>
+                                <div class="fw-semibold">${name}</div>
+                                ${subtitle ? `<div class="small text-muted">${subtitle}</div>` : ""}
+                            </div>
+                        </div>
+                    </button>
+                `;
+            }).join("");
+        }
+
+        function fetchAutocomplete(url, term, container, type) {
+            if ((term || "").trim().length < 2) {
+                container.innerHTML = "";
+                return;
+            }
+            fetch(`${url}?q=${encodeURIComponent(term)}`, {headers: {"X-Requested-With": "XMLHttpRequest"}})
+                .then((response) => response.ok ? response.json() : {results: []})
+                .then((data) => renderResults(container, data.results || [], type))
+                .catch(() => { container.innerHTML = ""; });
+        }
+
+        let characterTimer;
+        let corpTimer;
+        characterInput.addEventListener("input", () => {
+            characterIdInput.value = "";
+            clearTimeout(characterTimer);
+            characterTimer = setTimeout(() => {
+                fetchAutocomplete("{% url 'securityaudit:autocomplete_characters' %}", characterInput.value, characterResults, "character");
+            }, 180);
+        });
+
+        corporationInput.addEventListener("input", () => {
+            corporationIdInput.value = "";
+            clearTimeout(corpTimer);
+            corpTimer = setTimeout(() => {
+                fetchAutocomplete("{% url 'securityaudit:autocomplete_corporations' %}", corporationInput.value, corporationResults, "corporation");
+            }, 180);
+        });
+
+        function bindSelection(container, nameInput, idInput) {
+            container.addEventListener("click", (event) => {
+                const row = event.target.closest("[data-kind]");
+                if (!row) {
+                    return;
+                }
+                nameInput.value = decodeURIComponent(row.getAttribute("data-name") || "");
+                idInput.value = row.getAttribute("data-id") || "";
+                container.innerHTML = "";
+            });
+        }
+
+        bindSelection(characterResults, characterInput, characterIdInput);
+        bindSelection(corporationResults, corporationInput, corporationIdInput);
+
+        targetType.addEventListener("change", syncTargetFields);
+        syncTargetFields();
+
+        function formatIsk(value) {
+            const amount = parseFloat(value);
+            if (isNaN(amount)) return value;
+            return amount.toLocaleString() + " ISK";
+        }
+
+        document.querySelectorAll('input[type="range"]').forEach(function (input) {
+            const display = input.parentElement.querySelector('.js-range-value');
+            const isIsk = input.name.includes('isk');
+            function update() {
+                if (!display) return;
+                display.textContent = isIsk ? formatIsk(input.value) : input.value;
+            }
+            input.addEventListener('input', update);
+            update();
+        });
+
+        var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+        tooltipTriggerList.map(function (el) {
+            return new bootstrap.Tooltip(el);
+        });
+    })();
+</script>

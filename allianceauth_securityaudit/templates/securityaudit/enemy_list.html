@@ -1,0 +1,59 @@
+{% extends "securityaudit/base.html" %}
+{% load securityaudit_extras %}
+{% block securityaudit_content %}
+{% if perms.securityaudit.manage_enemies %}
+<div class="d-flex justify-content-end mb-3">
+    <a href="{% url 'securityaudit:enemy_add' %}" class="btn btn-primary">Add Enemy Entity</a>
+</div>
+{% endif %}
+
+<div class="card">
+    <div class="table-responsive">
+        <table class="table table-striped table-hover mb-0">
+            <thead>
+                <tr>
+                    <th>Type</th>
+                    <th>Entity</th>
+                    <th>Label</th>
+                    <th>Active</th>
+                    <th>Notes</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for row in rows %}
+                <tr>
+                    <td>{{ row.entity_type }}</td>
+                    <td>
+                        <div class="d-flex align-items-center gap-2">
+                            {% with logo=row.entity_type|entity_image_url:row.entity_id %}
+                            {% if logo %}
+                            <img src="{{ logo }}" alt="" width="32" height="32" class="rounded" />
+                            {% endif %}
+                            {% endwith %}
+                            <div>
+                                <div class="fw-semibold">{{ enemy_names|get:row.entity_id|default:row.entity_id }}</div>
+                                <div class="small text-muted">#{{ row.entity_id }}</div>
+                            </div>
+                        </div>
+                    </td>
+                    <td>{{ row.label|default:"-" }}</td>
+                    <td>{{ row.is_active|yesno:"Yes,No" }}</td>
+                    <td>{{ row.notes|default:"-" }}</td>
+                    <td>
+                        {% if perms.securityaudit.manage_enemies %}
+                        <form method="post" action="{% url 'securityaudit:enemy_delete' row.id %}">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+                        </form>
+                        {% endif %}
+                    </td>
+                </tr>
+            {% empty %}
+                <tr><td colspan="6">No enemy entities configured.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

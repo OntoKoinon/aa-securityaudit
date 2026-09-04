@@ -1,0 +1,32 @@
+{% extends "securityaudit/base.html" %}
+
+{% block securityaudit_content %}
+<div class="card mb-3">
+    <div class="card-header"><h5 class="mb-0">Audit Visibility Debug</h5></div>
+    <div class="card-body">
+        <p class="mb-1"><strong>Audit ID:</strong> {{ run.id }}</p>
+        <p class="mb-1"><strong>Target type:</strong> {{ run.target.target_type }}</p>
+        <p class="mb-1"><strong>Target name:</strong> {{ run.target }}</p>
+        <p class="mb-1"><strong>Target corp ID:</strong> {{ target_corp_id|default:"-" }}</p>
+        <p class="mb-1"><strong>Target corp name:</strong> {{ target_corp_name|default:"-" }}</p>
+        <p class="mb-1"><strong>Parent target corp ID:</strong> {{ parent_corp_id|default:"-" }}</p>
+        <p class="mb-1"><strong>Parent target corp name:</strong> {{ parent_corp_name|default:"-" }}</p>
+        <p class="mb-1"><strong>Started by:</strong> {{ started_by|default:"(none)" }}</p>
+        <p class="mb-1"><strong>Automated:</strong> {{ run.automated }}</p>
+        <p class="mb-0"><strong>Status:</strong> {{ run.status }}</p>
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-header"><h5 class="mb-0">Visibility for {{ request.user }}</h5></div>
+    <div class="card-body">
+        <p class="mb-1"><strong>Your main corp IDs:</strong> {{ user_corp_ids|default:"-" }}</p>
+        <p class="mb-1"><strong>Is admin:</strong> {{ is_admin }}</p>
+        <p class="mb-1"><strong>Started by you:</strong> {{ started_by_match }}</p>
+        <p class="mb-1"><strong>Is automated:</strong> {{ automated_match }}</p>
+        <p class="mb-1"><strong>Target corp matches your main:</strong> {{ target_corp_match }}</p>
+        <p class="mb-1"><strong>Parent target corp matches your main:</strong> {{ parent_corp_match }}</p>
+        <p class="mb-0"><strong><span class="{% if visible %}text-success{% else %}text-danger{% endif %}">Visible: {{ visible }}</span></strong></p>
+    </div>
+</div>
+{% endblock %}

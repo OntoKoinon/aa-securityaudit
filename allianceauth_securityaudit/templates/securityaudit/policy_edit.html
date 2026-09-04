@@ -1,0 +1,50 @@
+{% extends "securityaudit/base.html" %}
+{% load securityaudit_extras %}
+{% block securityaudit_content %}
+<div class="card mb-3">
+    <div class="card-header">
+        <h4 class="mb-0">Audit Policy</h4>
+    </div>
+</div>
+<form method="post" class="row g-3 mt-0">
+    {% csrf_token %}
+    {% for title, field_names in form.fieldsets %}
+    <div class="col-12">
+        <div class="card mb-3">
+            <div class="card-header">
+                <h5 class="mb-0">{{ title }}</h5>
+            </div>
+            <div class="card-body row g-3">
+                {% for name in field_names %}
+                    {% with field=form|get_field:name %}
+                    <div class="col-12 col-lg-6">
+                        <label class="form-label" for="{{ field.id_for_label }}">
+                            {{ field.label }}
+                            {% if field.help_text %}
+                            <sup class="text-info ms-1" data-bs-toggle="tooltip" data-bs-html="true" data-bs-placement="top" title="{{ field.help_text }}">(i)</sup>
+                            {% endif %}
+                        </label>
+                        {{ field }}
+                        {% if field.errors %}
+                        <div class="text-danger small mt-1">{{ field.errors|join:", " }}</div>
+                        {% endif %}
+                    </div>
+                    {% endwith %}
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+    <div class="col-12">
+        <button type="submit" class="btn btn-primary">Save Policy</button>
+    </div>
+</form>
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+        var tooltipList = tooltipTriggerList.map(function (el) {
+            return new bootstrap.Tooltip(el);
+        });
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,139 @@
+{% extends "securityaudit/base.html" %}
+{% block securityaudit_content %}
+<div class="card">
+    <div class="card-header">
+        <h4 class="mb-0">Add Enemy Entity</h4>
+    </div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-12">
+                <label class="form-label" for="entity-search">Search EVE entity</label>
+                <input type="text" id="entity-search" class="form-control" placeholder="Start typing a character, corporation, or alliance..." autocomplete="off" />
+                <div id="entity-search-results" class="list-group mt-1"></div>
+                <div class="d-flex gap-2 mt-2">
+                    <button class="btn btn-primary" type="button" data-bs-toggle="modal" data-bs-target="#manualAddModal">Add Manually</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="manualAddModal" tabindex="-1" aria-labelledby="manualAddModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="manualAddModalLabel">Add Enemy Entity</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="enemy-add-form" method="post" class="row g-3 p-3">
+                {% csrf_token %}
+                {% for field in form %}
+                <div class="col-12">
+                    <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                    {{ field }}
+                    {% if field.errors %}
+                    <div class="text-danger small mt-1">{{ field.errors|join:", " }}</div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+                <div class="modal-footer px-0 pt-2">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="submit" class="btn btn-primary">Create</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+(function () {
+    const searchInput = document.getElementById("entity-search");
+    const resultsBox = document.getElementById("entity-search-results");
+    const typeSelect = document.getElementById("id_entity_type");
+    const idInput = document.getElementById("id_entity_id");
+    const labelInput = document.getElementById("id_label");
+    const isActiveInput = document.getElementById("id_is_active");
+    const enemyForm = document.getElementById("enemy-add-form");
+    const manualModalEl = document.getElementById("manualAddModal");
+    const manualModal = manualModalEl ? new bootstrap.Modal(manualModalEl) : null;
+    if (!searchInput || !resultsBox || !typeSelect || !idInput || !enemyForm) return;
+
+    let debounceTimer;
+    searchInput.addEventListener("input", () => {
+        clearTimeout(debounceTimer);
+        const term = searchInput.value.trim();
+        if (term.length < 2) {
+            resultsBox.innerHTML = "";
+            return;
+        }
+        debounceTimer = setTimeout(() => {
+            fetch("{% url 'securityaudit:enemy_autocomplete' %}?q=" + encodeURIComponent(term))
+                .then(r => r.json())
+                .then(data => {
+                    resultsBox.innerHTML = "";
+                    function populateForm(item, includeLabel) {
+                        typeSelect.value = item.type;
+                        idInput.value = item.id;
+                        searchInput.value = item.name;
+                        if (labelInput) {
+                            labelInput.value = includeLabel ? item.name : "";
+                        }
+                        if (isActiveInput) {
+                            isActiveInput.checked = true;
+                        }
+                    }
+
+                    (data.results || []).forEach(item => {
+                        const row = document.createElement("div");
+                        row.className = "list-group-item list-group-item-action d-flex align-items-center gap-2";
+                        row.style.cursor = "pointer";
+                        if (item.image_url) {
+                            const img = document.createElement("img");
+                            img.src = item.image_url;
+                            img.alt = "";
+                            img.width = 32;
+                            img.height = 32;
+                            img.className = "rounded";
+                            row.appendChild(img);
+                        }
+                        const meta = document.createElement("div");
+                        meta.className = "me-auto";
+                        let details = item.type + " #" + item.id;
+                        if (item.type === "character") {
+                            const affiliations = [item.corp_name, item.alliance_name].filter(Boolean).join(" / ");
+                            if (affiliations) {
+                                details += " • " + affiliations;
+                            }
+                        }
+                        meta.innerHTML = "<div class=\"fw-semibold\">" + item.name + "</div><div class=\"small text-muted text-capitalize\">" + details + "</div>";
+                        row.appendChild(meta);
+
+                        const addBtn = document.createElement("button");
+                        addBtn.type = "button";
+                        addBtn.className = "btn btn-sm btn-success";
+                        addBtn.textContent = "Add";
+                        addBtn.addEventListener("click", (e) => {
+                            e.stopPropagation();
+                            populateForm(item, true);
+                            resultsBox.innerHTML = "";
+                            enemyForm.submit();
+                        });
+                        row.appendChild(addBtn);
+
+                        row.addEventListener("click", () => {
+                            populateForm(item, false);
+                            resultsBox.innerHTML = "";
+                            if (manualModal) {
+                                manualModal.show();
+                            } else {
+                                enemyForm.submit();
+                            }
+                        });
+                        resultsBox.appendChild(row);
+                    });
+                });
+        }, 300);
+    });
+})();
+</script>
+{% endblock %}

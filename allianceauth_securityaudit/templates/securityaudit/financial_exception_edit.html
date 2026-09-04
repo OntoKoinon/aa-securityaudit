@@ -1,0 +1,42 @@
+{% extends "securityaudit/base.html" %}
+{% load securityaudit_extras %}
+{% block securityaudit_content %}
+<div class="card">
+    <div class="card-header">
+        <h4 class="mb-0">Edit Financial Exception</h4>
+    </div>
+    <div class="card-body">
+        <div class="d-flex align-items-center gap-2 mb-3">
+            {% with logo=row.entity_type|entity_image_url:row.entity_id %}
+            {% if logo %}
+            <img src="{{ logo }}" alt="" width="32" height="32" class="rounded" />
+            {% endif %}
+            {% endwith %}
+            <div>
+                <div class="fw-semibold">{{ row.label|default:row.entity_id }}</div>
+                <div class="small text-muted text-capitalize">{{ row.get_entity_type_display }} #{{ row.entity_id }}</div>
+            </div>
+        </div>
+        <form method="post" class="row g-3">
+            {% csrf_token %}
+            {% for field in form %}
+            {% if field.name == "entity_type" or field.name == "entity_id" %}
+            <div style="display: none;">{{ field }}</div>
+            {% else %}
+            <div class="col-12">
+                <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                {{ field }}
+                {% if field.errors %}
+                <div class="text-danger small mt-1">{{ field.errors|join:", " }}</div>
+                {% endif %}
+            </div>
+            {% endif %}
+            {% endfor %}
+            <div class="col-12 d-flex justify-content-end gap-2">
+                <a href="{% url 'securityaudit:financial_exception_list' %}" class="btn btn-outline-light">Cancel</a>
+                <button type="submit" class="btn btn-primary">Save</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

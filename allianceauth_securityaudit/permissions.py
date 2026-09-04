@@ -1,0 +1,7 @@
+VIEW_DASHBOARD = "securityaudit.view_dashboard"
+VIEW_SUMMARIES = "securityaudit.view_summaries"
+RUN_AUDIT = "securityaudit.run_audit"
+ADMINISTRATE = "securityaudit.administrate"
+GENERATE_LINK = "securityaudit.generate_link"
+VIEW_ENEMIES = "securityaudit.view_enemies"
+MANAGE_ENEMIES = "securityaudit.manage_enemies"

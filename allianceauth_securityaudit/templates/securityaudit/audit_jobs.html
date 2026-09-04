@@ -1,0 +1,60 @@
+{% extends "securityaudit/base.html" %}
+{% block securityaudit_content %}
+{% if stale_count %}
+<div class="alert alert-warning d-flex align-items-center justify-content-between flex-wrap gap-2">
+    <div>
+        <strong>{{ stale_count }} stale audit run{{ stale_count|pluralize }}</strong> detected (running for more than 30 minutes with no progress).
+    </div>
+    <form method="post" action="{% url 'securityaudit:audit_recover_stale' %}" style="margin: 0;">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-sm btn-warning" onclick="return confirm('Mark {{ stale_count }} stale run{{ stale_count|pluralize }} as failed? This will allow them to be re-queued.');">Recover Stale</button>
+    </form>
+</div>
+{% endif %}
+<div class="card">
+    <div class="card-header"><h5 class="mb-0">Active Security Audit Jobs</h5></div>
+    <div class="table-responsive">
+        <table class="table table-striped table-hover mb-0">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Target</th>
+                    <th>Type</th>
+                    <th>Status</th>
+                    <th>Automated</th>
+                    <th>Progress</th>
+                    <th>Last Activity</th>
+                    <th>Records</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for run in runs %}
+                <tr class="{% if run.is_stale %}table-warning{% endif %}">
+                    <td><a href="{% url 'securityaudit:audit_detail' run.id %}">#{{ run.id }}</a></td>
+                    <td>{{ run.target }}</td>
+                    <td>{{ run.target.get_target_type_display }}</td>
+                    <td>
+                        {{ run.get_status_display }}
+                        {% if run.is_stale %}
+                        <span class="badge text-bg-warning">stale</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ run.automated|yesno:"Yes,No" }}</td>
+                    <td>{{ run.progress_percent }}% — {{ run.progress_message }}</td>
+                    <td>{{ run.started_at|default:run.created_at }}</td>
+                    <td>
+                        {% if run.has_findings %}findings{% endif %}
+                        {% if run.has_counterparties %}{% if run.has_findings %}/{% endif %}counterparties{% endif %}
+                        {% if not run.has_findings and not run.has_counterparties %}
+                        <span class="text-muted">no records yet</span>
+                        {% endif %}
+                    </td>
+                </tr>
+            {% empty %}
+                <tr><td colspan="8">No active or incomplete security audit jobs.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

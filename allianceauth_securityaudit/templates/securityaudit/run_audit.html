@@ -1,0 +1,11 @@
+{% extends "securityaudit/base.html" %}
+{% block securityaudit_content %}
+<div class="card">
+    <div class="card-header">
+        <h4 class="mb-0">Run Security Audit</h4>
+    </div>
+    <div class="card-body">
+        {% include "securityaudit/run_audit_form.html" %}
+    </div>
+</div>
+{% endblock %}

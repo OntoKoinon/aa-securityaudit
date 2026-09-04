@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aa-securityaudit"
+version = "1.0.0"
+description = "AllianceAuth plugin for security auditing using MemberAudit data"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{name = "Triumvirate"}]
+license = {text = "MIT"}
+classifiers = [
+  "Development Status :: 5 - Production/Stable",
+  "Framework :: Django",
+  "Framework :: Django :: 4.2",
+  "Framework :: Django :: 5.0",
+  "Intended Audience :: Developers",
+  "Intended Audience :: End Users/Desktop",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Games/Entertainment",
+]
+dependencies = [
+  "Django>=4.2,<6",
+  "aa-memberaudit>=5.0.0",
+  "requests>=2.31",
+]
+
+[project.urls]
+Homepage = "https://github.com/OntoKoinon/aa-securityaudit"
+Repository = "https://github.com/OntoKoinon/aa-securityaudit"
+Changelog = "https://github.com/OntoKoinon/aa-securityaudit/blob/main/CHANGELOG.md"
+Issues = "https://github.com/OntoKoinon/aa-securityaudit/issues"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+include = ["allianceauth_securityaudit*"]
+
+[tool.setuptools.package-data]
+allianceauth_securityaudit = ["templates/**/*.html"]

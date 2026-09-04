@@ -1,0 +1,69 @@
+{% extends "securityaudit/base.html" %}
+
+{% block securityaudit_content %}
+<div class="card mb-3">
+    <div class="card-header"><h5 class="mb-0">Security Audit Permission Debug</h5></div>
+    <div class="card-body">
+        <p class="mb-1"><strong>User:</strong> {{ request.user }}</p>
+        <p class="mb-1"><strong>Superuser:</strong> {{ is_superuser }}</p>
+        <p class="mb-1"><strong>Staff:</strong> {{ is_staff }}</p>
+        <p class="mb-1"><strong>Main character:</strong> {{ main_name|default:"(none)" }} (ID: {{ main_id|default:"-" }})</p>
+        <p class="mb-0"><strong>Main corp ID:</strong> {{ main_corp_id|default:"-" }}</p>
+    </div>
+</div>
+
+<h5>Permission checks</h5>
+<div class="table-responsive">
+    <table class="table table-striped table-hover mb-3">
+        <thead>
+            <tr>
+                <th>Permission</th>
+                <th>Has it?</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for p in permissions %}
+            <tr>
+                <td>{{ p.name }} <span class="text-muted">(securityaudit.{{ p.codename }})</span></td>
+                <td>{% if p.has %}<span class="text-success">Yes</span>{% else %}<span class="text-danger">No</span>{% endif %}</td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="2">No securityaudit permissions found.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<h5>Effective permissions</h5>
+<ul>
+    {% for p in effective_perms %}
+    <li>{{ p }}</li>
+    {% empty %}
+    <li>None</li>
+    {% endfor %}
+</ul>
+
+<h5>Declared characters / current corporations</h5>
+<div class="table-responsive">
+    <table class="table table-sm table-hover">
+        <thead>
+            <tr>
+                <th>Character ID</th>
+                <th>Name</th>
+                <th>Corp ID</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for d in declared_corps %}
+            <tr>
+                <td>{{ d.id }}</td>
+                <td>{{ d.name|default:"-" }}</td>
+                <td>{{ d.corp_id|default:"-" }}</td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="3">No declared characters found.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}
