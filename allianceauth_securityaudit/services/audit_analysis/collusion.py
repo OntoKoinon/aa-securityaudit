@@ -2,7 +2,6 @@ import json
 
 from django.utils import timezone
 
-from ...models import EnemyEntity
 from ..blacklist_adapter import BlacklistAdapter
 from ..memberaudit_adapter import MemberAuditAdapter
 
@@ -12,24 +11,7 @@ class CollusionDetectionMixin:
         if not kills or not character_id:
             return None
 
-        enemy_character_ids = set(
-            EnemyEntity.objects.filter(
-                entity_type=EnemyEntity.TYPE_CHARACTER,
-                is_active=True,
-            ).values_list("entity_id", flat=True)
-        )
-        enemy_corp_ids = set(
-            EnemyEntity.objects.filter(
-                entity_type=EnemyEntity.TYPE_CORP,
-                is_active=True,
-            ).values_list("entity_id", flat=True)
-        )
-        enemy_alliance_ids = set(
-            EnemyEntity.objects.filter(
-                entity_type=EnemyEntity.TYPE_ALLIANCE,
-                is_active=True,
-            ).values_list("entity_id", flat=True)
-        )
+        enemy_character_ids, enemy_corp_ids, enemy_alliance_ids = self._get_enemy_sets()
 
         matched_killmail_ids = []
         matched_killmail_entries = []

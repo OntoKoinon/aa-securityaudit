@@ -1704,7 +1704,7 @@ def policy_edit(request):
 
 @permission_required("securityaudit.view_enemies", raise_exception=True)
 def enemy_list(request):
-    rows = list(EnemyEntity.objects.order_by("entity_type", "entity_id"))
+    rows = list(EnemyEntity.objects.order_by("entity_type", "entity_id")[:500])
     ids = [r.entity_id for r in rows if r.entity_id]
     enemy_names = {}
     if ids:
@@ -1750,7 +1750,7 @@ def enemy_delete(request, enemy_id):
 
 @permission_required("securityaudit.administrate", raise_exception=True)
 def financial_exception_list(request):
-    rows = list(FinancialException.objects.order_by("entity_type", "entity_id"))
+    rows = list(FinancialException.objects.order_by("entity_type", "entity_id")[:500])
     ids = [r.entity_id for r in rows if r.entity_id]
     exception_names = {}
     if ids:

@@ -199,7 +199,7 @@ class FinancialMixin:
             total_score += score
 
         if counterparties_to_create:
-            AuditRelationshipCounterparty.objects.bulk_create(counterparties_to_create)
+            AuditRelationshipCounterparty.objects.bulk_create(counterparties_to_create, batch_size=500)
 
         return sorted(missing_scopes), total_score
 
@@ -323,6 +323,6 @@ class FinancialMixin:
                 progress_callback(idx, total_chars, char_id)
 
         if contract_counterparties_to_create:
-            AuditRelationshipCounterparty.objects.bulk_create(contract_counterparties_to_create)
+            AuditRelationshipCounterparty.objects.bulk_create(contract_counterparties_to_create, batch_size=500)
 
         return sorted(missing_scopes), total_score

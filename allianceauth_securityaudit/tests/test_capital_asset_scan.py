@@ -37,12 +37,14 @@ class GetCapitalOwnershipTests(SimpleTestCase):
     @patch("allianceauth_securityaudit.services.memberaudit_adapter.cache")
     @patch("allianceauth_securityaudit.services.memberaudit_adapter.apps")
     def test_cached_result_returned_without_queries(self, mock_apps, mock_cache):
-        """If cache has a value, no DB queries should be made."""
-        cached = {100: {23757: {"asset_count": 1, "is_current_ship": False}}}
-        mock_cache.get.return_value = cached
+        """If cache has a value for a character, no DB queries should be made."""
+        # Per-character cache returns the character's data directly (not
+        # wrapped in a char_id key — the outer method assembles that).
+        cached_char_data = {23757: {"asset_count": 1, "is_current_ship": False}}
+        mock_cache.get.return_value = cached_char_data
 
         result = MemberAuditAdapter.get_capital_ownership([100])
-        self.assertEqual(result, cached)
+        self.assertEqual(result, {100: cached_char_data})
         # get_model should not be called when cache hits
         mock_apps.get_model.assert_not_called()
 

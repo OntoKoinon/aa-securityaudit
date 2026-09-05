@@ -32,7 +32,7 @@ def discover_new_join_mains(policy: AuditPolicy):
         return []
     allowed_corps = managed_ids
 
-    users = get_user_model().objects.all()
+    users = get_user_model().objects.all().iterator(chunk_size=200)
     rows = []
     for user in users:
         main_name = _extract_main_character_name(user)

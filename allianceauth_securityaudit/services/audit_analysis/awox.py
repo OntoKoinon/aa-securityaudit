@@ -24,7 +24,6 @@ from ...constants import (
     HEAVY_INTERDICTOR_CRUISER_GROUP_ID,
     THROWAWAY_VICTIM_SHIP_GROUPS,
 )
-from ...models import EnemyEntity
 from ..blacklist_adapter import BlacklistAdapter
 from ..esi_client import EsiClient
 from ..memberaudit_adapter import MemberAuditAdapter
@@ -53,25 +52,8 @@ class AwoxDetectionMixin:
         min_victim_value = Decimal(self.policy.awox_min_victim_value or Decimal("0"))
         blue_scouting_bonus = int(self.policy.awox_blue_scouting_bonus or 0)
 
-        # Enemy/blacklist entity sets for crossfire detection.
-        enemy_character_ids = set(
-            EnemyEntity.objects.filter(
-                entity_type=EnemyEntity.TYPE_CHARACTER,
-                is_active=True,
-            ).values_list("entity_id", flat=True)
-        )
-        enemy_corp_ids = set(
-            EnemyEntity.objects.filter(
-                entity_type=EnemyEntity.TYPE_CORP,
-                is_active=True,
-            ).values_list("entity_id", flat=True)
-        )
-        enemy_alliance_ids = set(
-            EnemyEntity.objects.filter(
-                entity_type=EnemyEntity.TYPE_ALLIANCE,
-                is_active=True,
-            ).values_list("entity_id", flat=True)
-        )
+        # Enemy/blacklist entity sets for crossfire detection (cached per run).
+        enemy_character_ids, enemy_corp_ids, enemy_alliance_ids = self._get_enemy_sets()
 
         # NPC corp set (reuse the shared cache populated by corp_history).
         npc_corp_ids = cache.get("securityaudit:npc_corp_ids")

@@ -98,9 +98,14 @@ def process_audit_run(audit_run_id):
 
     with transaction.atomic():
         audit_run.set_running()
-        audit_run.findings.all().delete()
-        audit_run.counterparties.all().delete()
-        audit_run.capital_ship_observations.all().delete()
+
+    # Clear previous findings/counterparties/observations outside the
+    # transaction so MySQL doesn't hold undo logs for all three deletes
+    # simultaneously. If the audit fails after clearing, the stale-run
+    # recovery mechanism will handle it.
+    audit_run.findings.all().delete()
+    audit_run.counterparties.all().delete()
+    audit_run.capital_ship_observations.all().delete()
     progress_callback(8, 100, "Cleared previous findings")
 
     try:
@@ -151,7 +156,7 @@ def process_new_joins():
         run.task_id = getattr(result, "id", "")
         run.save(update_fields=["task_id"])
 
-    retryable = AuditRun.objects.filter(status=AuditRun.STATUS_INCOMPLETE_MISSING_SCOPES, automated=True)
+    retryable = AuditRun.objects.filter(status=AuditRun.STATUS_INCOMPLETE_MISSING_SCOPES, automated=True).iterator(chunk_size=200)
     for run in retryable:
         result = enqueue_task(process_audit_run, run.id)
         run.task_id = getattr(result, "id", "")

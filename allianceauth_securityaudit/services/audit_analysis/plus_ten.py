@@ -4,7 +4,7 @@ from decimal import Decimal
 
 from django.utils import timezone
 
-from ...models import AuditRelationshipCounterparty, EnemyEntity
+from ...models import AuditRelationshipCounterparty
 from ..blacklist_adapter import BlacklistAdapter
 from ..memberaudit_adapter import MemberAuditAdapter
 
@@ -39,20 +39,8 @@ class PlusTenMixin:
         if not plus_ten_ids:
             return None
 
-        # Single query for all active enemy entities, partitioned in Python.
-        enemy_rows = EnemyEntity.objects.filter(is_active=True).values_list(
-            "entity_type", "entity_id"
-        )
-        enemy_character_ids = set()
-        enemy_corp_ids = set()
-        enemy_alliance_ids = set()
-        for etype, eid in enemy_rows:
-            if etype == EnemyEntity.TYPE_CHARACTER:
-                enemy_character_ids.add(eid)
-            elif etype == EnemyEntity.TYPE_CORP:
-                enemy_corp_ids.add(eid)
-            elif etype == EnemyEntity.TYPE_ALLIANCE:
-                enemy_alliance_ids.add(eid)
+        # Enemy entity sets (cached per run via base mixin).
+        enemy_character_ids, enemy_corp_ids, enemy_alliance_ids = self._get_enemy_sets()
 
         blacklisted_ids = set()
         if BlacklistAdapter.is_available():
@@ -193,7 +181,7 @@ class PlusTenMixin:
             created_contacts.append(contact_id)
 
         if counterparties_to_create:
-            AuditRelationshipCounterparty.objects.bulk_create(counterparties_to_create)
+            AuditRelationshipCounterparty.objects.bulk_create(counterparties_to_create, batch_size=500)
 
         if not created_contacts:
             return None

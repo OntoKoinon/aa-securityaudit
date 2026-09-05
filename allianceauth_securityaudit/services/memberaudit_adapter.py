@@ -1,4 +1,3 @@
-import hashlib
 import logging
 
 from django.apps import apps
@@ -733,9 +732,11 @@ class MemberAuditAdapter:
         Returns an empty dict if MemberAudit is not installed or no characters
         are found. This is a read-only query against MemberAudit's local
         database -- no ESI calls are made.
-        """
-        from .audit_analysis.capital_ships import CAPITAL_SHIPS, CAPITAL_SHIP_GROUPS
 
+        Each character is processed and cached independently (per-character
+        cache key) so that memory usage scales with one character's data at
+        a time rather than the full set.
+        """
         ids = set()
         for value in character_ids or []:
             if value is None:
@@ -746,6 +747,18 @@ class MemberAuditAdapter:
                 continue
         if not ids:
             return {}
+
+        result = {}
+        for char_id in sorted(ids):
+            char_data = MemberAuditAdapter._get_capital_ownership_single(char_id)
+            if char_data:
+                result[char_id] = char_data
+        return result
+
+    @staticmethod
+    def _get_capital_ownership_single(char_id):
+        """Fetch capital ownership data for a single character, with per-character caching."""
+        from .audit_analysis.capital_ships import CAPITAL_SHIPS, CAPITAL_SHIP_GROUPS
 
         capital_type_ids = list(CAPITAL_SHIPS.keys())
         capital_group_ids = set(CAPITAL_SHIP_GROUPS)
@@ -761,15 +774,7 @@ class MemberAuditAdapter:
         if CharacterModel is None or (CharacterAsset is None and CharacterShip is None and CharacterContract is None and CharacterMarketOrder is None):
             return {}
 
-        # Cache key is a stable hash of the sorted character IDs and the
-        # capital type ID set. The type set is static, but including it
-        # guards against future registry changes.
-        cache_key = (
-            "securityaudit:capital_ownership:"
-            + hashlib.md5(
-                (",".join(str(i) for i in sorted(ids))).encode("utf-8")
-            ).hexdigest()
-        )
+        cache_key = f"securityaudit:capital_ownership:{char_id}"
         cached = cache.get(cache_key)
         if cached is not None:
             return cached
@@ -779,252 +784,242 @@ class MemberAuditAdapter:
         # CharacterContract.STATUS_OUTSTANDING / STATUS_IN_PROGRESS).
         ACTIVE_CONTRACT_STATUSES = {"os", "ip"}
 
-        # Batch-fetch all MemberAudit Character objects in one query instead
-        # of one .get() per character_id.
-        ma_char_map = {}
+        # Fetch the MemberAudit Character object for this character.
+        ma_char = None
         try:
-            ma_chars_qs = CharacterModel.objects.select_related("eve_character").filter(
-                eve_character__character_id__in=ids
+            ma_char = CharacterModel.objects.select_related("eve_character").get(
+                eve_character__character_id=char_id
             )
-            for ma_char in ma_chars_qs:
-                eve_char = getattr(ma_char, "eve_character", None)
-                eve_id = getattr(eve_char, "character_id", None) if eve_char else None
-                if eve_id:
-                    ma_char_map[int(eve_id)] = ma_char
+        except CharacterModel.DoesNotExist:
+            pass
         except Exception:
-            LOGGER.debug("MemberAudit Character batch lookup failed", exc_info=True)
+            LOGGER.debug("MemberAudit Character lookup failed for %s", char_id, exc_info=True)
 
-        result = {}
-        for char_id in ids:
-            ma_char = ma_char_map.get(char_id)
-            if ma_char is None:
-                continue
+        if ma_char is None:
+            return {}
 
-            char_data = {}
+        char_data = {}
 
-            def _ensure_entry(type_id):
-                return char_data.setdefault(
-                    type_id, {
-                        "asset_count": 0,
-                        "is_current_ship": False,
-                        "contract_count": 0,
-                        "market_order_count": 0,
-                    }
-                )
+        def _ensure_entry(type_id):
+            return char_data.setdefault(
+                type_id, {
+                    "asset_count": 0,
+                    "is_current_ship": False,
+                    "contract_count": 0,
+                    "market_order_count": 0,
+                }
+            )
 
-            # --- Assets ---
-            if CharacterAsset is not None:
+        # --- Assets ---
+        if CharacterAsset is not None:
+            try:
+                # Prefer group-based matching so new capital hulls are
+                # detected without maintaining a static type-id list.
                 try:
-                    # Prefer group-based matching so new capital hulls are
-                    # detected without maintaining a static type-id list.
-                    try:
-                        assets = CharacterAsset.objects.filter(
-                            character=ma_char,
-                        ).filter(
-                            Q(eve_type_id__in=capital_type_ids)
-                            | Q(eve_type__eve_group_id__in=capital_group_ids)
-                            | Q(eve_type__eve_group__id__in=capital_group_ids)
-                        )
-                    except Exception:
-                        assets = CharacterAsset.objects.filter(
-                            character=ma_char,
-                            eve_type_id__in=capital_type_ids,
-                        )
-                    for asset in assets:
-                        type_id = asset.eve_type_id
-                        qty = max(asset.quantity or 0, 1 if asset.is_singleton else 0)
-                        if type_id and qty:
-                            entry = _ensure_entry(type_id)
-                            entry["asset_count"] += qty
-                except Exception:
-                    LOGGER.debug("CharacterAsset query failed for %s", char_id, exc_info=True)
-
-            # --- Current ship ---
-            if CharacterShip is not None:
-                try:
-                    ship = CharacterShip.objects.get(character=ma_char)
-                    type_id = ship.eve_type_id
-                    group_id = None
-                    eve_type = getattr(ship, "eve_type", None)
-                    if eve_type is not None:
-                        group_id = getattr(eve_type, "eve_group_id", None)
-                        if group_id is None:
-                            eve_group = getattr(eve_type, "eve_group", None)
-                            group_id = getattr(eve_group, "id", None)
-                    if type_id and (type_id in CAPITAL_SHIPS or group_id in capital_group_ids):
-                        entry = _ensure_entry(type_id)
-                        entry["is_current_ship"] = True
-                except CharacterShip.DoesNotExist:
-                    pass
-                except Exception:
-                    LOGGER.debug("CharacterShip query failed for %s", char_id, exc_info=True)
-
-            # --- Active contracts with capital items ---
-            # Contracts where the character is the issuer and the contract is
-            # still active (outstanding or in_progress). We check contract items
-            # for capital ship type IDs. MemberAudit stores contracts from the
-            # character's perspective (both issued and received), so we must
-            # filter to issuer-only to detect capitals the character is selling.
-            #
-            # EveEntity (used for the issuer FK) uses the EVE Online ID as its
-            # primary key, so contract.issuer_id IS the EVE character ID — no
-            # need to resolve the related object.
-            if CharacterContract is not None and CharacterContractItem is not None:
-                capital_type_set = set(capital_type_ids)
-                try:
-                    # prefetch_related batches all contract items into a single
-                    # follow-up query instead of one query per contract.
-                    contracts = CharacterContract.objects.prefetch_related(
-                        "items"
-                    ).filter(character=ma_char)
-                    # MemberAudit can hold stale contract rows where status
-                    # remains "OS"/"IP" even after expiry. Apply an expiry
-                    # guard so we only treat currently active contracts as
-                    # ownership signals.
-                    try:
-                        contracts = contracts.filter(
-                            Q(date_expired__isnull=True) | Q(date_expired__gte=timezone.now())
-                        )
-                    except Exception:
-                        pass
-                    active_count = 0
-                    for contract in contracts:
-                        try:
-                            status = str(getattr(contract, "status", "") or "").lower()
-                            if status not in ACTIVE_CONTRACT_STATUSES:
-                                continue
-                            active_count += 1
-                            # issuer_id is the EveEntity PK = EVE character ID.
-                            issuer_id = getattr(contract, "issuer_id", None)
-                            if issuer_id is not None and int(issuer_id) != char_id:
-                                continue
-                            items = contract.items.all() if hasattr(contract, "items") else []
-                            for item in items:
-                                item_type_id = getattr(item, "eve_type_id", None)
-                                if not item_type_id:
-                                    item_type_id = getattr(item, "type_id", None)
-                                if not item_type_id:
-                                    continue
-                                is_capital_type = int(item_type_id) in capital_type_set
-                                if not is_capital_type:
-                                    eve_type = getattr(item, "eve_type", None)
-                                    group_id = getattr(eve_type, "eve_group_id", None) if eve_type else None
-                                    if group_id is None and eve_type is not None:
-                                        eve_group = getattr(eve_type, "eve_group", None)
-                                        group_id = getattr(eve_group, "id", None)
-                                    is_capital_type = group_id in capital_group_ids
-                                if not is_capital_type:
-                                    continue
-                                # is_included=True means the item is being
-                                # offered by the issuer (selling). Skip items
-                                # that are being requested in exchange.
-                                is_included = getattr(item, "is_included", True)
-                                if not is_included:
-                                    continue
-                                qty = getattr(item, "quantity", None)
-                                is_singleton = bool(getattr(item, "is_singleton", False))
-                                try:
-                                    qty = int(qty) if qty is not None else 0
-                                except (TypeError, ValueError):
-                                    qty = 0
-                                qty = max(qty, 1 if is_singleton else 0, 1)
-                                entry = _ensure_entry(int(item_type_id))
-                                # Count hull units on active contracts, not just
-                                # number of contracts containing a hull.
-                                entry["contract_count"] += qty
-                        except Exception:
-                            LOGGER.debug(
-                                "Failed to process contract %s for char %s",
-                                getattr(contract, "pk", "?"), char_id, exc_info=True,
-                            )
-                    if active_count > 0 and not char_data:
-                        LOGGER.debug(
-                            "Character %s has %d active contracts but no "
-                            "capital items found in any of them.",
-                            char_id, active_count,
-                        )
-                except Exception:
-                    LOGGER.warning(
-                        "CharacterContract query failed for %s", char_id, exc_info=True,
+                    assets = CharacterAsset.objects.filter(
+                        character=ma_char,
+                    ).filter(
+                        Q(eve_type_id__in=capital_type_ids)
+                        | Q(eve_type__eve_group_id__in=capital_group_ids)
+                        | Q(eve_type__eve_group__id__in=capital_group_ids)
                     )
-
-            # --- Active market sell orders for capitals ---
-            # MemberAudit (as of 5.1.0) does not persist market orders as a
-            # Django model, so we fall back to ESI. If a future MemberAudit
-            # version adds a CharacterMarketOrder model, we'll use it;
-            # otherwise we query ESI directly with the character's token.
-            if CharacterMarketOrder is not None:
-                try:
-                    orders = CharacterMarketOrder.objects.filter(
+                except Exception:
+                    assets = CharacterAsset.objects.filter(
                         character=ma_char,
                         eve_type_id__in=capital_type_ids,
                     )
-                    for order in orders:
-                        # Only count sell orders (is_buy_order is False or None).
-                        is_buy = getattr(order, "is_buy_order", False)
-                        if is_buy:
-                            continue
-                        # Check if the order is still active. MemberAudit may
-                        # store state as "open" or use a boolean is_active.
-                        state = str(getattr(order, "state", "") or "").lower()
-                        if state and state not in {"open", "active", ""}:
-                            continue
-                        type_id = getattr(order, "eve_type_id", None) or getattr(order, "type_id", None)
-                        if type_id:
-                            entry = _ensure_entry(int(type_id))
-                            entry["market_order_count"] += 1
-                except Exception:
-                    LOGGER.debug("CharacterMarketOrder query failed for %s", char_id, exc_info=True)
-            else:
-                # ESI fallback: fetch the character's market orders via ESI.
-                # This requires a valid token for the character.
-                token = MemberAuditAdapter.get_token_for_character(char_id)
-                if token:
-                    try:
-                        from .esi_client import EsiClient
+                for asset in assets:
+                    type_id = asset.eve_type_id
+                    qty = max(asset.quantity or 0, 1 if asset.is_singleton else 0)
+                    if type_id and qty:
+                        entry = _ensure_entry(type_id)
+                        entry["asset_count"] += qty
+            except Exception:
+                LOGGER.debug("CharacterAsset query failed for %s", char_id, exc_info=True)
 
-                        esi_orders = EsiClient().get_character_market_orders(
-                            char_id, token=token
-                        )
-                        capital_type_set = set(capital_type_ids)
-                        for order in esi_orders or []:
-                            if order.get("is_buy_order"):
+        # --- Current ship ---
+        if CharacterShip is not None:
+            try:
+                ship = CharacterShip.objects.get(character=ma_char)
+                type_id = ship.eve_type_id
+                group_id = None
+                eve_type = getattr(ship, "eve_type", None)
+                if eve_type is not None:
+                    group_id = getattr(eve_type, "eve_group_id", None)
+                    if group_id is None:
+                        eve_group = getattr(eve_type, "eve_group", None)
+                        group_id = getattr(eve_group, "id", None)
+                if type_id and (type_id in CAPITAL_SHIPS or group_id in capital_group_ids):
+                    entry = _ensure_entry(type_id)
+                    entry["is_current_ship"] = True
+            except CharacterShip.DoesNotExist:
+                pass
+            except Exception:
+                LOGGER.debug("CharacterShip query failed for %s", char_id, exc_info=True)
+
+        # --- Active contracts with capital items ---
+        # Contracts where the character is the issuer and the contract is
+        # still active (outstanding or in_progress). We check contract items
+        # for capital ship type IDs. MemberAudit stores contracts from the
+        # character's perspective (both issued and received), so we must
+        # filter to issuer-only to detect capitals the character is selling.
+        #
+        # EveEntity (used for the issuer FK) uses the EVE Online ID as its
+        # primary key, so contract.issuer_id IS the EVE character ID — no
+        # need to resolve the related object.
+        if CharacterContract is not None and CharacterContractItem is not None:
+            capital_type_set = set(capital_type_ids)
+            try:
+                # prefetch_related batches all contract items into a single
+                # follow-up query instead of one query per contract.
+                contracts = CharacterContract.objects.prefetch_related(
+                    "items"
+                ).filter(character=ma_char)
+                # MemberAudit can hold stale contract rows where status
+                # remains "OS"/"IP" even after expiry. Apply an expiry
+                # guard so we only treat currently active contracts as
+                # ownership signals.
+                try:
+                    contracts = contracts.filter(
+                        Q(date_expired__isnull=True) | Q(date_expired__gte=timezone.now())
+                    )
+                except Exception:
+                    pass
+                active_count = 0
+                for contract in contracts:
+                    try:
+                        status = str(getattr(contract, "status", "") or "").lower()
+                        if status not in ACTIVE_CONTRACT_STATUSES:
+                            continue
+                        active_count += 1
+                        # issuer_id is the EveEntity PK = EVE character ID.
+                        issuer_id = getattr(contract, "issuer_id", None)
+                        if issuer_id is not None and int(issuer_id) != char_id:
+                            continue
+                        items = contract.items.all() if hasattr(contract, "items") else []
+                        for item in items:
+                            item_type_id = getattr(item, "eve_type_id", None)
+                            if not item_type_id:
+                                item_type_id = getattr(item, "type_id", None)
+                            if not item_type_id:
                                 continue
-                            state = str(order.get("state", "") or "").lower()
-                            # ESI market order states: open, closed, expired,
-                            # cancelled, character. Only "open" orders are active.
-                            if state and state != "open":
+                            is_capital_type = int(item_type_id) in capital_type_set
+                            if not is_capital_type:
+                                eve_type = getattr(item, "eve_type", None)
+                                group_id = getattr(eve_type, "eve_group_id", None) if eve_type else None
+                                if group_id is None and eve_type is not None:
+                                    eve_group = getattr(eve_type, "eve_group", None)
+                                    group_id = getattr(eve_group, "id", None)
+                                is_capital_type = group_id in capital_group_ids
+                            if not is_capital_type:
                                 continue
-                            type_id = order.get("type_id")
-                            if not type_id:
+                            # is_included=True means the item is being
+                            # offered by the issuer (selling). Skip items
+                            # that are being requested in exchange.
+                            is_included = getattr(item, "is_included", True)
+                            if not is_included:
                                 continue
+                            qty = getattr(item, "quantity", None)
+                            is_singleton = bool(getattr(item, "is_singleton", False))
                             try:
-                                type_id_int = int(type_id)
+                                qty = int(qty) if qty is not None else 0
                             except (TypeError, ValueError):
-                                continue
-                            is_capital = type_id_int in capital_type_set
-                            if not is_capital:
-                                try:
-                                    type_info = EsiClient().get_type_info(type_id_int)
-                                    group_id = type_info.get("group_id")
-                                    is_capital = group_id in capital_group_ids
-                                except Exception:
-                                    is_capital = False
-                            if is_capital:
-                                entry = _ensure_entry(type_id_int)
-                                entry["market_order_count"] += 1
+                                qty = 0
+                            qty = max(qty, 1 if is_singleton else 0, 1)
+                            entry = _ensure_entry(int(item_type_id))
+                            # Count hull units on active contracts, not just
+                            # number of contracts containing a hull.
+                            entry["contract_count"] += qty
                     except Exception:
                         LOGGER.debug(
-                            "ESI market orders fetch failed for %s",
-                            char_id,
-                            exc_info=True,
+                            "Failed to process contract %s for char %s",
+                            getattr(contract, "pk", "?"), char_id, exc_info=True,
                         )
+                if active_count > 0 and not char_data:
+                    LOGGER.debug(
+                        "Character %s has %d active contracts but no "
+                        "capital items found in any of them.",
+                        char_id, active_count,
+                    )
+            except Exception:
+                LOGGER.warning(
+                    "CharacterContract query failed for %s", char_id, exc_info=True,
+                )
 
-            if char_data:
-                result[char_id] = char_data
+        # --- Active market sell orders for capitals ---
+        # MemberAudit (as of 5.1.0) does not persist market orders as a
+        # Django model, so we fall back to ESI. If a future MemberAudit
+        # version adds a CharacterMarketOrder model, we'll use it;
+        # otherwise we query ESI directly with the character's token.
+        if CharacterMarketOrder is not None:
+            try:
+                orders = CharacterMarketOrder.objects.filter(
+                    character=ma_char,
+                    eve_type_id__in=capital_type_ids,
+                )
+                for order in orders:
+                    # Only count sell orders (is_buy_order is False or None).
+                    is_buy = getattr(order, "is_buy_order", False)
+                    if is_buy:
+                        continue
+                    # Check if the order is still active. MemberAudit may
+                    # store state as "open" or use a boolean is_active.
+                    state = str(getattr(order, "state", "") or "").lower()
+                    if state and state not in {"open", "active", ""}:
+                        continue
+                    type_id = getattr(order, "eve_type_id", None) or getattr(order, "type_id", None)
+                    if type_id:
+                        entry = _ensure_entry(int(type_id))
+                        entry["market_order_count"] += 1
+            except Exception:
+                LOGGER.debug("CharacterMarketOrder query failed for %s", char_id, exc_info=True)
+        else:
+            # ESI fallback: fetch the character's market orders via ESI.
+            # This requires a valid token for the character.
+            token = MemberAuditAdapter.get_token_for_character(char_id)
+            if token:
+                try:
+                    from .esi_client import EsiClient
 
-        cache.set(cache_key, result, MemberAuditAdapter.CAPITAL_OWNERSHIP_CACHE_TTL)
-        return result
+                    esi_orders = EsiClient().get_character_market_orders(
+                        char_id, token=token
+                    )
+                    capital_type_set = set(capital_type_ids)
+                    for order in esi_orders or []:
+                        if order.get("is_buy_order"):
+                            continue
+                        state = str(order.get("state", "") or "").lower()
+                        # ESI market order states: open, closed, expired,
+                        # cancelled, character. Only "open" orders are active.
+                        if state and state != "open":
+                            continue
+                        type_id = order.get("type_id")
+                        if not type_id:
+                            continue
+                        try:
+                            type_id_int = int(type_id)
+                        except (TypeError, ValueError):
+                            continue
+                        is_capital = type_id_int in capital_type_set
+                        if not is_capital:
+                            try:
+                                type_info = EsiClient().get_type_info(type_id_int)
+                                group_id = type_info.get("group_id")
+                                is_capital = group_id in capital_group_ids
+                            except Exception:
+                                is_capital = False
+                        if is_capital:
+                            entry = _ensure_entry(type_id_int)
+                            entry["market_order_count"] += 1
+                except Exception:
+                    LOGGER.debug(
+                        "ESI market orders fetch failed for %s",
+                        char_id,
+                        exc_info=True,
+                    )
+
+        cache.set(cache_key, char_data, MemberAuditAdapter.CAPITAL_OWNERSHIP_CACHE_TTL)
+        return char_data
 
     @staticmethod
     def _get_model(app_label, model_name):
