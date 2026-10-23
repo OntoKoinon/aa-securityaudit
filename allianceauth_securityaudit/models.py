@@ -357,23 +357,31 @@ class AuditRun(models.Model):
             ]
         )
 
-    def mark_incomplete_missing_scopes(self, scopes, message=""):
+    def mark_incomplete_missing_scopes(self, scopes, message="", summary=None, risk_score=None, risk_level=None):
         self.status = self.STATUS_INCOMPLETE_MISSING_SCOPES
         self.missing_scopes = ",".join(sorted(set(scopes)))
         self.error_message = message
         self.finished_at = timezone.now()
         self.progress_current = self.progress_total
         self.progress_message = "Missing required ESI scopes"
-        self.save(
-            update_fields=[
-                "status",
-                "missing_scopes",
-                "error_message",
-                "finished_at",
-                "progress_current",
-                "progress_message",
-            ]
-        )
+        update_fields = [
+            "status",
+            "missing_scopes",
+            "error_message",
+            "finished_at",
+            "progress_current",
+            "progress_message",
+        ]
+        if summary is not None:
+            self.summary = summary
+            update_fields.append("summary")
+        if risk_score is not None:
+            self.risk_score = risk_score
+            update_fields.append("risk_score")
+        if risk_level is not None:
+            self.risk_level = risk_level
+            update_fields.append("risk_level")
+        self.save(update_fields=update_fields)
 
     def mark_failed(self, message):
         self.status = self.STATUS_FAILED

@@ -277,12 +277,13 @@ class CapitalShipMixin:
                 to_update.append(obj)
 
         if to_create:
-            AuditCapitalShipObservation.objects.bulk_create(to_create)
+            AuditCapitalShipObservation.objects.bulk_create(to_create, batch_size=500)
         if to_update:
             AuditCapitalShipObservation.objects.bulk_update(
                 to_update,
                 ["character_name", "ship_name", "ship_category",
                  "observation_count", "first_seen", "last_seen"],
+                batch_size=500,
             )
 
         # Merge in MemberAudit asset/ownership data on top of zKill observations.
@@ -370,11 +371,12 @@ class CapitalShipMixin:
                 to_update.append(obj)
 
         if to_create:
-            AuditCapitalShipObservation.objects.bulk_create(to_create)
+            AuditCapitalShipObservation.objects.bulk_create(to_create, batch_size=500)
         if to_update:
             AuditCapitalShipObservation.objects.bulk_update(
                 to_update,
                 ["asset_count", "is_current_ship",
                  "contract_count", "market_order_count",
                  "character_name", "ship_name", "ship_category"],
+                batch_size=500,
             )

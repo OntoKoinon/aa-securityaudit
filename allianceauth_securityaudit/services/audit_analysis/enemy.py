@@ -58,24 +58,7 @@ class EnemyDetectionMixin:
         if not contact_standings:
             return None
 
-        enemy_character_ids = set(
-            EnemyEntity.objects.filter(
-                entity_type=EnemyEntity.TYPE_CHARACTER,
-                is_active=True,
-            ).values_list("entity_id", flat=True)
-        )
-        enemy_corp_ids = set(
-            EnemyEntity.objects.filter(
-                entity_type=EnemyEntity.TYPE_CORP,
-                is_active=True,
-            ).values_list("entity_id", flat=True)
-        )
-        enemy_alliance_ids = set(
-            EnemyEntity.objects.filter(
-                entity_type=EnemyEntity.TYPE_ALLIANCE,
-                is_active=True,
-            ).values_list("entity_id", flat=True)
-        )
+        enemy_character_ids, enemy_corp_ids, enemy_alliance_ids = self._get_enemy_sets()
 
         plus_ten_contact_ids = []
         for raw_id, standing in (contact_standings or {}).items():

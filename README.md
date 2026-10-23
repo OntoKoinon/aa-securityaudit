@@ -18,6 +18,7 @@ Every alliance loses ships, ISK, and morale to spies, awoxers, and thieves who s
 - [Installation](#installation)
 - [Permissions](#permissions)
 - [Policy Settings](#policy-settings)
+- [Performance](#performance)
 - [AllianceAuth Compatibility](#allianceauth-compatibility)
 - [Changelog](#changelog)
 - [Contribute](#contribute)
@@ -234,6 +235,24 @@ All settings are configurable via the Policy Editor page in the AllianceAuth adm
 |---|---|---|
 | `esi_throttle_seconds` | 0.10s | Delay between ESI API calls to avoid rate limiting. |
 | `summary_link_expiry_hours` | 24 hours | Hours until shareable summary links expire. |
+
+## Performance
+
+Security Audit processes large datasets (killmails, wallet journals, contracts, asset lists) during each audit run. In-process caches for affiliations, type info, and corporation lookups accumulate over the lifetime of a Celery worker process. On busy alliances with automated new-join audits, these caches can grow significantly.
+
+To prevent gradual memory growth in Celery workers, set `max_tasks_per_child` on your Celery worker process. This recycles the worker after N tasks, releasing all accumulated in-process memory:
+
+```bash
+celery -A myauth worker --max-tasks-per-child=10
+```
+
+Or in your AllianceAuth `local.py`:
+
+```python
+CELERY_WORKER_MAX_TASKS_PER_CHILD = 10
+```
+
+A value of 10 is a good starting point. Each audit run counts as one task, so this recycles the worker after every 10 audits. The cost is a ~1 second delay when the worker process restarts, which is negligible.
 
 ## AllianceAuth Compatibility
 

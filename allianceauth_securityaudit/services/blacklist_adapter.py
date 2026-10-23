@@ -119,9 +119,8 @@ class BlacklistAdapter:
     def get_blacklist_reasons(character_ids):
         """Return ``{character_id: reason}`` for blacklisted characters.
 
-        Uses batched ``__in`` queries and caches the first matching record
-        per character, then extracts reasons in Python — no per-character
-        DB round-trips.
+        Uses batched ``__in`` queries and extracts reasons using
+        ``values()`` to avoid instantiating full ORM objects.
         """
         if not character_ids or not BlacklistAdapter.is_available():
             return {}
@@ -130,34 +129,46 @@ class BlacklistAdapter:
         if not ids:
             return {}
 
-        # Map character_id -> first matching record (across all models/lookups).
-        records_by_id = {}
+        reason_fields = ("reason", "notes", "description", "comment", "ban_reason")
+        results = {}
+
         for model in BlacklistAdapter._blacklist_models():
             for lookup in _ID_LOOKUPS:
                 try:
-                    qs = model.objects.filter(**{f"{lookup}__in": ids})
-                    for record in qs:
-                        raw = getattr(record, lookup, None)
-                        if raw is None:
-                            # For relation lookups the attribute may be the
-                            # related object, not the ID. Try the _id suffix.
-                            raw = getattr(record, f"{lookup}_id", None)
+                    # Build a values() query that selects the lookup field
+                    # plus any reason fields that exist on this model.
+                    available = []
+                    for f in reason_fields:
+                        try:
+                            model._meta.get_field(f)
+                            available.append(f)
+                        except Exception:
+                            pass
+                    if not available:
+                        continue
+
+                    qs = model.objects.filter(**{f"{lookup}__in": ids}).values(lookup, *available)
+                    for row in qs:
+                        raw = row.get(lookup)
                         if raw is None:
                             continue
                         try:
                             cid = int(raw)
                         except (TypeError, ValueError):
                             continue
-                        if cid in ids and cid not in records_by_id:
-                            records_by_id[cid] = record
+                        if cid in ids and cid not in results:
+                            reason = ""
+                            for f in available:
+                                val = row.get(f)
+                                if val:
+                                    reason = str(val)
+                                    break
+                            if reason and cid not in results:
+                                results[cid] = reason
                 except (FieldError, Exception):
                     continue
 
-        return {
-            cid: BlacklistAdapter._extract_reason(record)
-            for cid, record in records_by_id.items()
-            if BlacklistAdapter._extract_reason(record)
-        }
+        return results
 
     # ------------------------------------------------------------------
     # Helpers
