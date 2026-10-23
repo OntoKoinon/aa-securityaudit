@@ -457,6 +457,8 @@ class AuditEngine(BaseAuditMixin, CorpHistoryMixin, EnemyDetectionMixin, Collusi
             summary_parts.append(alt_corp_result["summary"])
 
         self._progress(95, "Finalizing risk assessment")
+        if user is None:
+            summary_parts.append("public-data-only audit (character not registered in auth)")
         risk_level = self._risk_level(score)
         summary = "No major findings" if not summary_parts else ", ".join(summary_parts)
         return AuditResult(

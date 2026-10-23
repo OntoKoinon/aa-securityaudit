@@ -120,7 +120,12 @@ def process_audit_run(audit_run_id):
         return
 
     if result.missing_scopes:
-        audit_run.mark_incomplete_missing_scopes(result.missing_scopes)
+        audit_run.mark_incomplete_missing_scopes(
+            result.missing_scopes,
+            summary=result.summary,
+            risk_score=result.risk_score,
+            risk_level=result.risk_level,
+        )
         _update_parent_run(audit_run)
         return
 
